@@ -78,7 +78,7 @@ def test_assert_no_edits_matching(tmp_path: Path) -> None:
 def test_assert_tool_called_before(tmp_path: Path) -> None:
     tape = _tape(tmp_path, [_tool("read"), _tool("pytest"), _tool("commit"), _tool("pytest")])
     testing.assert_tool_called_before(tape, "pytest", "commit")
-    with pytest.raises(AssertionError, match="'commit' was called before 'read'"):
+    with pytest.raises(AssertionError, match="'read' was called before 'commit'"):
         testing.assert_tool_called_before(tape, "commit", "read")
     with pytest.raises(AssertionError, match="never called"):
         testing.assert_tool_called_before(tape, "pytest", "deploy")

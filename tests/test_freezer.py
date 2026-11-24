@@ -103,19 +103,24 @@ def test_freeze_generates_passing_ruff_clean_pytest_module(
     with TapeReader(copy) as r:
         assert r.meta == meta and len(r.steps()) == 3
 
-    # Runnable, zero-API-cost, and lint/format clean.
+    # Runnable, zero-API-cost, and lint/format clean as a file in a user's project
+    # (cwd = the eval dir, so agent_rr is an installed third-party package).
     run = _pytest(out)
     assert run.returncode == 0, run.stdout + run.stderr
     assert "5 passed" in run.stdout
     rules = ["--isolated", "--line-length", "100", "--target-version", "py311"]
     lint = subprocess.run(
         [str(RUFF), "check", *rules, "--select", "E,F,W,I,B,UP,SIM,RUF", str(out)],
+        cwd=out.parent,
         capture_output=True,
         text=True,
     )
     assert lint.returncode == 0, lint.stdout
     fmt = subprocess.run(
-        [str(RUFF), "format", *rules, "--check", str(out)], capture_output=True, text=True
+        [str(RUFF), "format", *rules, "--check", str(out)],
+        cwd=out.parent,
+        capture_output=True,
+        text=True,
     )
     assert fmt.returncode == 0, fmt.stdout + fmt.stderr
 

@@ -15,6 +15,7 @@ import typer
 from agent_rr import __version__
 from agent_rr.chaos.injector import load_chaos
 from agent_rr.errors import AgentRRError
+from agent_rr.evals.freezer import freeze
 from agent_rr.fork import fork
 from agent_rr.git_engine.snapshot import head_sha, repo_toplevel
 from agent_rr.git_engine.worktree import signal_cleanup
@@ -130,3 +131,14 @@ def fork_cmd(
     code, child = fork(tape, at_step, cmd, out, model, system_prompt_file)
     print(f"agent-rr: child tape written to {child}", file=sys.stderr)
     raise typer.Exit(code)
+
+
+@app.command("freeze")
+@_guard
+def freeze_cmd(
+    tape: Annotated[Path, typer.Argument(help="Tape to freeze.")],
+    out: Annotated[Path, typer.Option("--out", help="Generated pytest file.")],
+) -> None:
+    """Generate a standalone pytest behavioral regression test using agent_rr.testing."""
+    written = freeze(tape, out)
+    typer.echo(f"wrote {written} (reference tape: {written.with_suffix('.tape')})")
