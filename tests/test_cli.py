@@ -49,9 +49,7 @@ def test_record_injects_env_returns_child_code_and_writes_default_tape(repo: Pat
         assert r.meta.command_argv == [sys.executable, "-c", child]
         assert r.meta.base_commit_sha == git(repo, "rev-parse", "HEAD")
         assert r.meta.chaos_seed is None and r.meta.metadata == {"producer": "agent-rr"}
-    assert f"tape written to {tape.relative_to(repo.resolve())}" in proc.stderr or str(tape) in (
-        proc.stderr
-    )
+    assert f"agent-rr: tape written to {tape}" in proc.stderr
     assert git(repo, "status", "--porcelain") == "?? .agent-rr/"
 
 

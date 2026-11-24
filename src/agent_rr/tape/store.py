@@ -140,26 +140,41 @@ class TapeReader:
         self.path = path
         try:
             self.connection = connect(path)
-            row = self.connection.execute("SELECT * FROM tape_meta").fetchone()
         except sqlite3.DatabaseError as exc:
             raise AgentRRError(f"not a valid .tape file: {path} ({exc})") from exc
-        if row is None:
+        try:
+            self.meta = self._parse_meta()
+        except BaseException:
             self.connection.close()
-            raise AgentRRError(f"tape has no tape_meta row: {path}")
-        self.meta = TapeMeta(
-            tape_id=row[0],
-            schema_version=row[1],
-            created_at=row[2],
-            command_argv=json.loads(row[3]),
-            repo_root=row[4],
-            base_commit_sha=row[5],
-            parent_tape_id=row[6],
-            fork_step_idx=row[7],
-            chaos_seed=row[8],
-            metadata=json.loads(row[9]),
-        )
+            raise
+
+    def _parse_meta(self) -> TapeMeta:
+        with _corruption_as_error(self.path):
+            row = self.connection.execute(
+                "SELECT tape_id, schema_version, created_at, command_argv, repo_root,"
+                " base_commit_sha, parent_tape_id, fork_step_idx, chaos_seed, metadata_json"
+                " FROM tape_meta"
+            ).fetchone()
+            if row is None:
+                raise AgentRRError(f"tape has no tape_meta row: {self.path}")
+            return TapeMeta(
+                tape_id=row[0],
+                schema_version=row[1],
+                created_at=row[2],
+                command_argv=json.loads(row[3]),
+                repo_root=row[4],
+                base_commit_sha=row[5],
+                parent_tape_id=row[6],
+                fork_step_idx=row[7],
+                chaos_seed=row[8],
+                metadata=json.loads(row[9]),
+            )
 
     def steps(self) -> list[Step]:
+        with _corruption_as_error(self.path):
+            return self._parse_steps()
+
+    def _parse_steps(self) -> list[Step]:
         conn = self.connection
         llm = _first_by_step(
             conn,
@@ -210,7 +225,10 @@ class TapeReader:
                 tool=tool.get(r[0]),
                 chaos=chaos.get(r[0]),
             )
-            for r in conn.execute("SELECT * FROM steps ORDER BY step_idx")
+            for r in conn.execute(
+                "SELECT step_idx, ts_start, ts_end, kind, pre_tree_sha, post_tree_sha, diff_text,"
+                " status FROM steps ORDER BY step_idx"
+            )
         ]
 
     def close(self) -> None:
@@ -224,6 +242,15 @@ class TapeReader:
 
 
 T = TypeVar("T")
+
+
+@contextmanager
+def _corruption_as_error(path: Path) -> Iterator[None]:
+    """Malformed rows/schema surface as an actionable exit-2 error, never a traceback."""
+    try:
+        yield
+    except (sqlite3.DatabaseError, ValueError, TypeError, IndexError) as exc:
+        raise AgentRRError(f"corrupt or incompatible .tape file {path}: {exc}") from exc
 
 
 def _first_by_step(conn: sqlite3.Connection, sql: str, build: Callable[[Any], T]) -> dict[int, T]:
