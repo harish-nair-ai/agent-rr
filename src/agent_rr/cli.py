@@ -15,6 +15,7 @@ import typer
 from agent_rr import __version__
 from agent_rr.chaos.injector import load_chaos
 from agent_rr.errors import AgentRRError
+from agent_rr.fork import fork
 from agent_rr.git_engine.snapshot import head_sha, repo_toplevel
 from agent_rr.git_engine.worktree import signal_cleanup
 from agent_rr.models import TapeMeta
@@ -110,4 +111,22 @@ def record(
         )
         code = run_recorded(cmd, cwd, writer, repo, ReplayRouter([], 0), config)
     print(f"agent-rr: tape written to {path}", file=sys.stderr)
+    raise typer.Exit(code)
+
+
+@app.command("fork")
+@_guard
+def fork_cmd(
+    tape: Annotated[Path, typer.Argument(help="Parent tape.")],
+    cmd: Cmd,
+    at_step: Annotated[int, typer.Option("--at-step", help="Step to fork at.")],
+    model: Annotated[str | None, typer.Option("--model", help="Override the model.")] = None,
+    system_prompt_file: Annotated[
+        Path | None, typer.Option("--system-prompt-file", help="Replacement system prompt.")
+    ] = None,
+    out: Annotated[Path | None, typer.Option("--out", help="Child tape path.")] = None,
+) -> None:
+    """Restore step N in an isolated worktree, mock steps < N, run CMD live from N."""
+    code, child = fork(tape, at_step, cmd, out, model, system_prompt_file)
+    print(f"agent-rr: child tape written to {child}", file=sys.stderr)
     raise typer.Exit(code)
