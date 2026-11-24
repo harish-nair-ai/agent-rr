@@ -6,6 +6,10 @@ A flight recorder and time-travel debugger for coding agents: record every LLM c
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 [![CI](https://github.com/harish-nair-ai/agent-rr/actions/workflows/ci.yml/badge.svg)](https://github.com/harish-nair-ai/agent-rr/actions/workflows/ci.yml)
 
+[![Watch the 90-second explainer](assets/hero.gif)](assets/explainer.mp4)
+
+▶ Watch the full narrated explainer ([assets/explainer.mp4](assets/explainer.mp4))
+
 ---
 
 ## Contents
