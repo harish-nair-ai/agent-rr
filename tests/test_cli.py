@@ -147,3 +147,31 @@ def test_sigterm_during_fork_cleans_worktree_and_child(repo: Path, tmp_path: Pat
     assert git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
     with pytest.raises(ProcessLookupError):
         os.kill(child_pid, 0)
+
+
+def test_tape_inside_repo_is_excluded_from_snapshots_and_diff(repo: Path) -> None:
+    agent = textwrap.dedent(
+        """
+        from pathlib import Path
+        from agent_rr import tape
+        @tape.record
+        def write_file(path: str, content: str) -> str:
+            Path(path).write_text(content)
+            return "ok"
+        write_file("out0.txt", "a")
+        write_file("out1.txt", "b")
+        """
+    )
+    rec = run_cli("record", "--out", "run.tape", "--", sys.executable, "-c", agent, cwd=repo)
+    assert rec.returncode == 0, rec.stderr
+    with TapeReader(repo / "run.tape") as r:
+        trees = {s.pre_tree_sha for s in r.steps()} | {s.post_tree_sha for s in r.steps()}
+    for tree in trees:
+        assert "run.tape" not in git(repo, "ls-tree", "-r", "--name-only", tree)
+    fork = run_cli(
+        "fork", "run.tape", "--at-step", "1", "--out", "child.tape", "--",
+        sys.executable, "-c", agent, cwd=repo,
+    )  # fmt: skip
+    assert fork.returncode == 0, fork.stderr
+    diff = run_cli("diff", "run.tape", "child.tape", cwd=repo)
+    assert "run.tape" not in diff.stdout and "child.tape" not in diff.stdout

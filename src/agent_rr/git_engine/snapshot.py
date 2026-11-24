@@ -64,12 +64,28 @@ def temp_index() -> Iterator[dict[str, str]]:
                 os.unlink(leftover)
 
 
-def capture_tree_sha(repo_root: Path) -> str:
-    """Write the working tree (minus ignored and agent runtime dirs) as a git tree object."""
+SQLITE_SIDECARS = ("", "-wal", "-shm", "-journal")
+
+
+def _tape_excludes(repo_root: Path, tape: Path | None) -> list[str]:
+    """Pathspecs excluding the active tape and its SQLite sidecars when it lives in the repo."""
+    if tape is None:
+        return []
+    resolved, root = tape.resolve(), repo_root.resolve()
+    if not resolved.is_relative_to(root):
+        return []
+    rel = resolved.relative_to(root).as_posix()
+    return [f":(exclude,literal){rel}{suffix}" for suffix in SQLITE_SIDECARS]
+
+
+def capture_tree_sha(repo_root: Path, tape: Path | None = None) -> str:
+    """Write the working tree (minus ignored files, agent runtime dirs, and the active
+    `tape` being written) as a git tree object."""
     head_sha(repo_root)
+    excludes = [":!.agent-rr", ":!.flywire", *_tape_excludes(repo_root, tape)]
     with temp_index() as env:
         run_git(["read-tree", "HEAD"], repo_root, env)
-        run_git(["add", "-A", "--", ".", ":!.agent-rr", ":!.flywire"], repo_root, env)
+        run_git(["add", "-A", "--", ".", *excludes], repo_root, env)
         return run_git(["write-tree"], repo_root, env).strip()
 
 

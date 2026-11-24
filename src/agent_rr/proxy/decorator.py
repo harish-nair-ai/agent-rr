@@ -91,7 +91,7 @@ class _Session:
             idx,
             args_json,
             time.time(),
-            capture_tree_sha(self.repo_root),
+            capture_tree_sha(self.repo_root, self.tape_path),
             None,
             fault,
             path,
@@ -144,7 +144,11 @@ class _Session:
                 result = truncate_stdout(result)
             text = _text(result)
         self._append(
-            call, capture_tree_sha(self.repo_root), text, is_error=error is not None, chaos=chaos
+            call,
+            capture_tree_sha(self.repo_root, self.tape_path),
+            text,
+            is_error=error is not None,
+            chaos=chaos,
         )
         return result
 
