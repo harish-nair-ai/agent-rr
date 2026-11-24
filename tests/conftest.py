@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from upstream import Upstream
 
 _SCRUBBED_ENV = (
     "AGENT_RR_TAPE_PATH",
@@ -63,6 +64,14 @@ def no_leaked_worktree_dirs() -> Iterator[None]:
     yield
     leaked = set(tmp.glob("agent-rr-*")) - before
     assert not leaked, f"leaked temp dirs: {sorted(leaked)}"
+
+
+@pytest.fixture
+def upstream() -> Iterator[Upstream]:
+    server = Upstream()
+    server.start()
+    yield server
+    server.stop()
 
 
 def run_cli(
