@@ -67,25 +67,27 @@ def temp_index() -> Iterator[dict[str, str]]:
 SQLITE_SIDECARS = ("", "-wal", "-shm", "-journal")
 
 
-def _tape_excludes(repo_root: Path, tape: Path | None) -> list[str]:
-    """Pathspecs excluding the active tape and its SQLite sidecars when it lives in the repo."""
+def _tape_paths(repo_root: Path, tape: Path | None) -> list[str]:
+    """Literal pathspecs of the active tape and its SQLite sidecars when it lives in the repo."""
     if tape is None:
         return []
     resolved, root = tape.resolve(), repo_root.resolve()
     if not resolved.is_relative_to(root):
         return []
     rel = resolved.relative_to(root).as_posix()
-    return [f":(exclude,literal){rel}{suffix}" for suffix in SQLITE_SIDECARS]
+    return [f":(literal){rel}{suffix}" for suffix in SQLITE_SIDECARS]
 
 
 def capture_tree_sha(repo_root: Path, tape: Path | None = None) -> str:
     """Write the working tree (minus ignored files, agent runtime dirs, and the active
     `tape` being written) as a git tree object."""
     head_sha(repo_root)
-    excludes = [":!.agent-rr", ":!.flywire", *_tape_excludes(repo_root, tape)]
+    tape_paths = _tape_paths(repo_root, tape)
     with temp_index() as env:
         run_git(["read-tree", "HEAD"], repo_root, env)
-        run_git(["add", "-A", "--", ".", *excludes], repo_root, env)
+        run_git(["add", "-A", "--", ".", ":!.agent-rr", ":!.flywire"], repo_root, env)
+        if tape_paths:  # unstaged after the add: an exclude pathspec fails if git ignores it
+            run_git(["rm", "--cached", "-q", "--ignore-unmatch", "--", *tape_paths], repo_root, env)
         return run_git(["write-tree"], repo_root, env).strip()
 
 

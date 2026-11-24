@@ -160,7 +160,10 @@ def test_sigterm_during_fork_cleans_worktree_and_child(repo: Path, tmp_path: Pat
         os.kill(child_pid, 0)
 
 
-def test_tape_inside_repo_is_excluded_from_snapshots_and_diff(repo: Path) -> None:
+@pytest.mark.parametrize("out", ["run.tape", "ignored/run.tape"])
+def test_tape_inside_repo_is_excluded_from_snapshots_and_diff(repo: Path, out: str) -> None:
+    (repo / ".gitignore").write_text("ignored/\n")
+    (repo / "ignored").mkdir()
     agent = textwrap.dedent(
         """
         from pathlib import Path
@@ -173,16 +176,17 @@ def test_tape_inside_repo_is_excluded_from_snapshots_and_diff(repo: Path) -> Non
         write_file("out1.txt", "b")
         """
     )
-    rec = run_cli("record", "--out", "run.tape", "--", sys.executable, "-c", agent, cwd=repo)
-    assert rec.returncode == 0, rec.stderr
-    with TapeReader(repo / "run.tape") as r:
+    rec = run_cli("record", "--out", out, "--", sys.executable, "-c", agent, cwd=repo)
+    assert rec.returncode == 0 and "warning" not in rec.stderr, rec.stderr
+    with TapeReader(repo / out) as r:
+        assert len(r.steps()) == 2
         trees = {s.pre_tree_sha for s in r.steps()} | {s.post_tree_sha for s in r.steps()}
     for tree in trees:
         assert "run.tape" not in git(repo, "ls-tree", "-r", "--name-only", tree)
     fork = run_cli(
-        "fork", "run.tape", "--at-step", "1", "--out", "child.tape", "--",
+        "fork", out, "--at-step", "1", "--out", "child.tape", "--",
         sys.executable, "-c", agent, cwd=repo,
     )  # fmt: skip
     assert fork.returncode == 0, fork.stderr
-    diff = run_cli("diff", "run.tape", "child.tape", cwd=repo)
+    diff = run_cli("diff", out, "child.tape", cwd=repo)
     assert "run.tape" not in diff.stdout and "child.tape" not in diff.stdout
