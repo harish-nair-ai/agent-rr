@@ -3,7 +3,8 @@
 import os
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 from agent_rr.errors import AgentRRError
@@ -11,11 +12,14 @@ from agent_rr.errors import AgentRRError
 NO_COMMITS = "repository has no commits; make an initial commit first"
 
 
-def run_git(args: list[str], cwd: Path, env: Mapping[str, str] | None = None) -> str:
+def run_git(
+    args: list[str], cwd: Path, env: Mapping[str, str] | None = None, stdin: str | None = None
+) -> str:
     proc = subprocess.run(
         ["git", *args],
         cwd=cwd,
         env=None if env is None else dict(env),
+        input=stdin,
         capture_output=True,
         text=True,
     )
@@ -46,21 +50,27 @@ def head_sha(repo_root: Path) -> str:
     return proc.stdout.strip()
 
 
-def capture_tree_sha(repo_root: Path) -> str:
-    """Write the working tree (minus ignored and agent runtime dirs) as a git tree object."""
-    head_sha(repo_root)
+@contextmanager
+def temp_index() -> Iterator[dict[str, str]]:
+    """Yield an env whose GIT_INDEX_FILE is a fresh throwaway index; the user's is never used."""
     fd, tmp_idx = tempfile.mkstemp(dir=tempfile.gettempdir())
     os.close(fd)
     os.unlink(tmp_idx)  # git initialises a fresh index at this path
-    env = {**os.environ, "GIT_INDEX_FILE": tmp_idx}
     try:
-        run_git(["read-tree", "HEAD"], repo_root, env)
-        run_git(["add", "-A", "--", ".", ":!.agent-rr", ":!.flywire"], repo_root, env)
-        return run_git(["write-tree"], repo_root, env).strip()
+        yield {**os.environ, "GIT_INDEX_FILE": tmp_idx}
     finally:
         for leftover in (tmp_idx, tmp_idx + ".lock"):
             if os.path.exists(leftover):
                 os.unlink(leftover)
+
+
+def capture_tree_sha(repo_root: Path) -> str:
+    """Write the working tree (minus ignored and agent runtime dirs) as a git tree object."""
+    head_sha(repo_root)
+    with temp_index() as env:
+        run_git(["read-tree", "HEAD"], repo_root, env)
+        run_git(["add", "-A", "--", ".", ":!.agent-rr", ":!.flywire"], repo_root, env)
+        return run_git(["write-tree"], repo_root, env).strip()
 
 
 def diff_trees(repo_root: Path, pre: str, post: str) -> str:

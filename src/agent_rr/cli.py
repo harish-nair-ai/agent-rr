@@ -13,6 +13,7 @@ from typing import Annotated, Any, TypeVar, cast
 import typer
 
 from agent_rr import __version__
+from agent_rr.bisect.engine import DEFAULT_HARNESS_PATHS, bisect, describe, majority_threshold
 from agent_rr.chaos.injector import load_chaos
 from agent_rr.errors import AgentRRError
 from agent_rr.evals.freezer import freeze
@@ -142,3 +143,34 @@ def freeze_cmd(
     """Generate a standalone pytest behavioral regression test using agent_rr.testing."""
     written = freeze(tape, out)
     typer.echo(f"wrote {written} (reference tape: {written.with_suffix('.tape')})")
+
+
+@app.command("bisect")
+@_guard
+def bisect_cmd(
+    cmd: Cmd,
+    good: Annotated[str, typer.Option("--good", help="Known-good revision.")],
+    bad: Annotated[str, typer.Option("--bad", help="Known-bad revision.")],
+    tape: Annotated[Path, typer.Option("--tape", help="Tape supplying the workspace state.")],
+    at_step: Annotated[int, typer.Option("--at-step", help="Step to replay from.")],
+    check: Annotated[str, typer.Option("--check", help="Shell command; exit 0 = pass.")],
+    trials: Annotated[int, typer.Option("--trials", help="Trials per commit (K).")] = 3,
+    harness_paths: Annotated[
+        list[str] | None,
+        typer.Option("--harness-paths", help="Globs kept at each commit's version (repeatable)."),
+    ] = None,
+    skip_endpoint_check: Annotated[
+        bool, typer.Option("--skip-endpoint-check", help="Do not pre-validate --good/--bad.")
+    ] = False,
+) -> None:
+    """Binary-search commits for the harness/prompt change that broke the agent."""
+    repo = repo_toplevel(Path.cwd())
+    harness = harness_paths or list(DEFAULT_HARNESS_PATHS)
+    culprit, evaluations = bisect(
+        repo, good, bad, tape, at_step, check, cmd, trials, harness, skip_endpoint_check
+    )
+    typer.echo(describe(repo, culprit, harness))
+    typer.echo(
+        f"evaluations: {evaluations} (trials per evaluation: {trials}, "
+        f"majority: {majority_threshold(trials)}/{trials})"
+    )

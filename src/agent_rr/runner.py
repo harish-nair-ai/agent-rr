@@ -3,6 +3,7 @@
 import os
 import subprocess
 from pathlib import Path
+from typing import IO
 
 from agent_rr.chaos.injector import ChaosInjector
 from agent_rr.errors import AgentRRError
@@ -19,10 +20,10 @@ from agent_rr.proxy.replay_router import ReplayRouter
 from agent_rr.tape.store import TapeWriter
 
 
-def run_child(cmd: list[str], cwd: Path, env: dict[str, str]) -> int:
+def run_child(cmd: list[str], cwd: Path, env: dict[str, str], stdout: IO[str] | None = None) -> int:
     """Run `cmd`; on any interruption terminate (then kill) it so no zombie survives."""
     try:
-        proc = subprocess.Popen(cmd, cwd=cwd, env=env)
+        proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=stdout)
     except OSError as exc:
         raise AgentRRError(f"cannot run {cmd[0]!r}: {exc.strerror or exc}") from exc
     try:
@@ -45,6 +46,7 @@ def run_recorded(
     snapshot_root: Path,
     router: ReplayRouter,
     chaos: ChaosConfig | None,
+    stdout: IO[str] | None = None,
 ) -> int:
     state = ProxyState(
         writer=writer,
@@ -60,4 +62,4 @@ def run_recorded(
             env["AGENT_RR_CHAOS"] = chaos.model_dump_json()
         else:
             env.pop("AGENT_RR_CHAOS", None)
-        return run_child(cmd, cwd, env)
+        return run_child(cmd, cwd, env, stdout)
