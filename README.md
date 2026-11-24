@@ -336,15 +336,19 @@ The generated test (excerpt):
 REFERENCE_TAPE = pathlib.Path(__file__).with_suffix(".tape")
 TAPE = pathlib.Path(os.environ.get("AGENT_RR_TAPE_PATH") or REFERENCE_TAPE)
 
+
 def test_step_budget(tape: pathlib.Path) -> None:
     # Fails if a run exceeds 1.5x the 3 recorded steps.
     testing.assert_max_steps(tape, limit=4)
 
+
 def test_tool_order(tape: pathlib.Path) -> None:
     testing.assert_tool_called_before(tape, "write_file", "run")
 
+
 def test_no_repeated_error_loop(tape: pathlib.Path) -> None:
     testing.assert_no_repeated_error_loop(tape, max_repeats=3)
+
 
 def test_final_diff_clean(tape: pathlib.Path) -> None:
     testing.assert_final_diff_clean(tape)
@@ -457,10 +461,12 @@ Finds the first commit in `G..B` where the agent starts failing `CMD`.
 ```python
 from agent_rr import tape
 
-@tape.record                      # step named after the function
+
+@tape.record  # step named after the function
 def read_file(path: str) -> str: ...
 
-@tape.record(name="shell")        # explicit tool name
+
+@tape.record(name="shell")  # explicit tool name
 async def run(cmd: str) -> str: ...
 ```
 
@@ -598,7 +604,7 @@ git add -A -- . ':!.agent-rr' ':!.flywire'
 git write-tree        -> 40-hex tree SHA
 ```
 
-then deletes the temp index (and its `.lock`) in `finally`. `.git/index`, HEAD and refs are never written. Ignored files are not captured, and agent-rr's and flywire's own runtime directories are excluded. Tests compare the bytes of `.git/index` before and after a snapshot.
+then deletes the temp index (and its `.lock`) in `finally`. `.git/index`, HEAD and refs are never written. Ignored files are not captured, and agent-rr's and flywire's own runtime directories are excluded, as is the tape being written (plus its `-wal`/`-shm`/`-journal` sidecars) when `--out` puts it inside the repo. Tests compare the bytes of `.git/index` before and after a snapshot.
 
 ### Streaming without buffering
 

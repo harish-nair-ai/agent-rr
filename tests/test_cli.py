@@ -81,6 +81,17 @@ def test_record_bad_args_exit_2(repo: Path, args: list[str], message: str) -> No
     assert "Traceback" not in proc.stderr
 
 
+def test_chaos_config_errors_are_concise_and_human(repo: Path) -> None:
+    (repo / "chaos.toml").write_text('seed = 1\n[[faults]]\npreset = "meteor"\ntarget = "llm"\n')
+    proc = run_cli("record", "--chaos", "chaos.toml", "--", "true", cwd=repo)
+    assert proc.returncode == 2
+    assert proc.stderr.startswith(
+        "error: invalid chaos config chaos.toml: faults.0.preset: must be"
+    )
+    assert "(got 'meteor')" in proc.stderr
+    assert "pydantic" not in proc.stderr and "ChaosRule" not in proc.stderr
+
+
 def test_missing_command_is_usage_error(repo: Path) -> None:
     proc = run_cli("record", cwd=repo)
     assert proc.returncode == 2 and "Traceback" not in proc.stderr
@@ -147,3 +158,35 @@ def test_sigterm_during_fork_cleans_worktree_and_child(repo: Path, tmp_path: Pat
     assert git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
     with pytest.raises(ProcessLookupError):
         os.kill(child_pid, 0)
+
+
+@pytest.mark.parametrize("out", ["run.tape", "ignored/run.tape"])
+def test_tape_inside_repo_is_excluded_from_snapshots_and_diff(repo: Path, out: str) -> None:
+    (repo / ".gitignore").write_text("ignored/\n")
+    (repo / "ignored").mkdir()
+    agent = textwrap.dedent(
+        """
+        from pathlib import Path
+        from agent_rr import tape
+        @tape.record
+        def write_file(path: str, content: str) -> str:
+            Path(path).write_text(content)
+            return "ok"
+        write_file("out0.txt", "a")
+        write_file("out1.txt", "b")
+        """
+    )
+    rec = run_cli("record", "--out", out, "--", sys.executable, "-c", agent, cwd=repo)
+    assert rec.returncode == 0 and "warning" not in rec.stderr, rec.stderr
+    with TapeReader(repo / out) as r:
+        assert len(r.steps()) == 2
+        trees = {s.pre_tree_sha for s in r.steps()} | {s.post_tree_sha for s in r.steps()}
+    for tree in trees:
+        assert "run.tape" not in git(repo, "ls-tree", "-r", "--name-only", tree)
+    fork = run_cli(
+        "fork", out, "--at-step", "1", "--out", "child.tape", "--",
+        sys.executable, "-c", agent, cwd=repo,
+    )  # fmt: skip
+    assert fork.returncode == 0, fork.stderr
+    diff = run_cli("diff", out, "child.tape", cwd=repo)
+    assert "run.tape" not in diff.stdout and "child.tape" not in diff.stdout

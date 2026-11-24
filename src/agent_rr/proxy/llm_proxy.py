@@ -118,7 +118,9 @@ async def _handle(
     headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_HEADERS}
     headers["accept-encoding"] = "identity"
 
-    pre_task = asyncio.create_task(asyncio.to_thread(capture_tree_sha, state.snapshot_root))
+    pre_task = asyncio.create_task(
+        asyncio.to_thread(capture_tree_sha, state.snapshot_root, state.writer.path)
+    )
     ts_start, t0 = time.time(), time.perf_counter()
 
     async def finish(status: int, data: bytes, streamed: bool) -> None:
@@ -164,7 +166,7 @@ async def _handle(
 
 async def _record_rate_limit(state: ProxyState, event: ChaosEvent) -> None:
     try:
-        sha = await asyncio.to_thread(capture_tree_sha, state.snapshot_root)
+        sha = await asyncio.to_thread(capture_tree_sha, state.snapshot_root, state.writer.path)
         now = time.time()
         await asyncio.to_thread(
             state.writer.append_step,
