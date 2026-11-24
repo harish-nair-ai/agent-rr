@@ -4,9 +4,9 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from agent_rr.bisect.engine import majority_threshold, overlay_tree
 from conftest import commit_all, git, run_cli
 
+from agent_rr.bisect.engine import majority_threshold, overlay_tree
 from agent_rr.git_engine.snapshot import capture_tree_sha
 
 AGENT = textwrap.dedent(

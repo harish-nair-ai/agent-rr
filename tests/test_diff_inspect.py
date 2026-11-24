@@ -4,9 +4,9 @@ import time
 from pathlib import Path
 
 import pytest
-from agent_rr.evals.diff_viewer import first_divergence
 from conftest import run_cli
 
+from agent_rr.evals.diff_viewer import first_divergence
 from agent_rr.git_engine.snapshot import capture_tree_sha, diff_trees, head_sha
 from agent_rr.models import ChaosEvent, LlmCall, StepData, TapeMeta, ToolCall
 from agent_rr.tape.store import TapeWriter, read_steps
