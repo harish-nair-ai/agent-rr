@@ -77,7 +77,10 @@ def anthropic_sse_events(model: str) -> list[bytes]:
         ev("content_block_stop", {"index": 1}),
         ev(
             "message_delta",
-            {"delta": {"stop_reason": "tool_use", "stop_sequence": None}, "usage": {"output_tokens": 9}},
+            {
+                "delta": {"stop_reason": "tool_use", "stop_sequence": None},
+                "usage": {"output_tokens": 9},
+            },
         ),
         ev("message_stop", {}),
     ]
@@ -111,7 +114,9 @@ class Upstream:
             def do_POST(self) -> None:
                 raw = self.rfile.read(int(self.headers["Content-Length"]))
                 body = json.loads(raw)
-                upstream.requests.append(Received(self.path, dict(self.headers), body))
+                upstream.requests.append(
+                    Received(self.path, {k.lower(): v for k, v in self.headers.items()}, body)
+                )
                 if upstream.fail_status:
                     self._send_json(upstream.fail_status, {"error": {"message": "upstream down"}})
                     return

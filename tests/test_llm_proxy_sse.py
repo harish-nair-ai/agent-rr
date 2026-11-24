@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from conftest import git
 from upstream import SSE_CHUNK_COUNT, Upstream, openai_sse_events
 
 from agent_rr.git_engine.snapshot import head_sha
@@ -63,18 +64,21 @@ def test_openai_sse_is_streamed_chunk_by_chunk_and_recorded(
         "stream": True,
         "messages": [{"role": "user", "content": f"my key is {SECRET}"}],
     }
-    with running_proxy(repo, tape, upstream) as base, httpx.Client(timeout=30) as client:
-        with client.stream(
+    with (
+        running_proxy(repo, tape, upstream) as base,
+        httpx.Client(timeout=30) as client,
+        client.stream(
             "POST",
             f"{base}/openai/v1/chat/completions",
             json=body,
             headers={"Authorization": f"Bearer {SECRET}"},
-        ) as resp:
-            assert resp.status_code == 200
-            assert resp.headers["content-type"].startswith("text/event-stream")
-            for chunk in resp.iter_raw():
-                received.append(chunk)
-                upstream.gate.set()  # upstream only continues once we saw the first bytes
+        ) as resp,
+    ):
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        for chunk in resp.iter_raw():
+            received.append(chunk)
+            upstream.gate.set()  # upstream only continues once we saw the first bytes
     # The first chunk reached the client while upstream was still blocked: true streaming.
     assert upstream.gate_released_in_time is True
     assert b"".join(received) == b"".join(upstream.sent)
@@ -84,12 +88,12 @@ def test_openai_sse_is_streamed_chunk_by_chunk_and_recorded(
     # Upstream got the real credential and the unredacted body.
     req = upstream.requests[0]
     assert req.path == "/v1/chat/completions"
-    assert req.headers["Authorization"] == f"Bearer {SECRET}"
+    assert req.headers["authorization"] == f"Bearer {SECRET}"
     assert req.body == body
 
     [step] = _steps(tape)
     assert step.kind == "llm_call" and step.status == "ok"
-    assert step.pre_tree_sha == step.post_tree_sha == head_sha(repo) and len(step.pre_tree_sha) == 40
+    assert step.pre_tree_sha == step.post_tree_sha == git(repo, "rev-parse", "HEAD^{tree}")
     llm = step.llm
     assert llm is not None
     assert llm.provider == "openai"
@@ -99,7 +103,10 @@ def test_openai_sse_is_streamed_chunk_by_chunk_and_recorded(
     assert llm.raw_sse_chunks is not None and len(llm.raw_sse_chunks) == SSE_CHUNK_COUNT
     assert "".join(llm.raw_sse_chunks).encode() == b"".join(upstream.sent)
     resp_obj = json.loads(llm.response_json)
-    assert resp_obj["choices"][0]["message"] == {"role": "assistant", "content": "w0 w1 w2 w3 w4 w5 w6 "}
+    assert resp_obj["choices"][0]["message"] == {
+        "role": "assistant",
+        "content": "w0 w1 w2 w3 w4 w5 w6 ",
+    }
     assert resp_obj["choices"][0]["finish_reason"] == "stop"
     assert (llm.input_tokens, llm.output_tokens) == (11, 7)
     assert json.loads(llm.request_json)["messages"][0]["content"] == f"my key is {REDACTED_SECRET}"

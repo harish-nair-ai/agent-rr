@@ -26,7 +26,10 @@ def test_openai_system_message_inserted_when_absent() -> None:
 def test_anthropic_top_level_system_replaced() -> None:
     out = apply_overrides("anthropic", {"system": "old", "messages": []}, None, "new")
     assert out == {"system": "new", "messages": []}
-    assert apply_overrides("anthropic", {"messages": []}, None, "s") == {"system": "s", "messages": []}
+    assert apply_overrides("anthropic", {"messages": []}, None, "s") == {
+        "system": "s",
+        "messages": [],
+    }
 
 
 def test_no_overrides_is_identity() -> None:
