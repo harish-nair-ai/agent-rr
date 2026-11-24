@@ -24,7 +24,7 @@ from typing import Any, ParamSpec, TypeVar, cast, overload
 from pydantic import ValidationError
 
 from agent_rr.chaos.injector import ChaosInjector, InjectedToolError, matching_path, truncate_stdout
-from agent_rr.errors import AgentRRError
+from agent_rr.errors import AgentRRError, describe
 from agent_rr.git_engine.snapshot import capture_tree_sha, diff_trees, head_sha, repo_toplevel
 from agent_rr.models import ChaosConfig, ChaosEvent, ChaosRule, StepData, TapeMeta, ToolCall
 from agent_rr.tape.redactor import redact_payload, redact_text
@@ -59,7 +59,7 @@ class _Session:
         try:
             self.chaos = ChaosInjector(ChaosConfig.model_validate_json(chaos)) if chaos else None
         except ValidationError as exc:
-            raise AgentRRError(f"invalid AGENT_RR_CHAOS: {exc}") from exc
+            raise AgentRRError(f"invalid AGENT_RR_CHAOS: {describe(exc)}") from exc
         with TapeWriter(tape_path) as writer:
             writer.ensure_meta(
                 TapeMeta(

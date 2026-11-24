@@ -81,6 +81,17 @@ def test_record_bad_args_exit_2(repo: Path, args: list[str], message: str) -> No
     assert "Traceback" not in proc.stderr
 
 
+def test_chaos_config_errors_are_concise_and_human(repo: Path) -> None:
+    (repo / "chaos.toml").write_text('seed = 1\n[[faults]]\npreset = "meteor"\ntarget = "llm"\n')
+    proc = run_cli("record", "--chaos", "chaos.toml", "--", "true", cwd=repo)
+    assert proc.returncode == 2
+    assert proc.stderr.startswith(
+        "error: invalid chaos config chaos.toml: faults.0.preset: must be"
+    )
+    assert "(got 'meteor')" in proc.stderr
+    assert "pydantic" not in proc.stderr and "ChaosRule" not in proc.stderr
+
+
 def test_missing_command_is_usage_error(repo: Path) -> None:
     proc = run_cli("record", cwd=repo)
     assert proc.returncode == 2 and "Traceback" not in proc.stderr

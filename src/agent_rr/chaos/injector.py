@@ -14,7 +14,7 @@ from typing import Any, get_args
 
 from pydantic import ValidationError
 
-from agent_rr.errors import AgentRRError
+from agent_rr.errors import AgentRRError, describe
 from agent_rr.models import ChaosConfig, ChaosEvent, ChaosRule, Preset
 
 TRUNCATION_MARKER = "\n...[TRUNCATED BY CHAOS]"
@@ -45,7 +45,9 @@ def load_chaos(specs: list[str], seed: int | None) -> ChaosConfig:
             )
         try:
             cfg = ChaosConfig.model_validate(tomllib.loads(path.read_text()))
-        except (tomllib.TOMLDecodeError, ValidationError) as exc:
+        except ValidationError as exc:
+            raise AgentRRError(f"invalid chaos config {path}: {describe(exc)}") from exc
+        except tomllib.TOMLDecodeError as exc:
             raise AgentRRError(f"invalid chaos config {path}: {exc}") from exc
         file_seed = cfg.seed if file_seed is None else file_seed
         faults.extend(cfg.faults)
