@@ -22,9 +22,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from agent_rr.chaos.injector import ChaosInjector
 from agent_rr.errors import AgentRRError
 from agent_rr.git_engine.snapshot import capture_tree_sha
-from agent_rr.models import LlmCall, StepData
+from agent_rr.models import ChaosEvent, LlmCall, StepData
 from agent_rr.proxy.replay_router import ReplayRouter, canonical_json, request_digest
 from agent_rr.proxy.sse import event_payloads, reassemble, split_events, token_usage
 from agent_rr.tape.redactor import redact_payload, redact_text
@@ -48,6 +49,7 @@ class ProxyState:
     openai_upstream: str = DEFAULT_OPENAI
     anthropic_upstream: str = DEFAULT_ANTHROPIC
     router: ReplayRouter = field(default_factory=lambda: ReplayRouter([], 0))
+    chaos: ChaosInjector | None = None
     llm_idx: int = 0
     client: httpx.AsyncClient | None = None
 
@@ -100,6 +102,13 @@ async def _handle(
     mock = state.router.mock_for(idx)
     if mock is not None:
         return _serve_mock(idx, body, mock)
+    if state.chaos is not None and (rule := state.chaos.llm_fault(idx)) is not None:
+        await _record_rate_limit(state, state.chaos.event(rule, {"llm_idx": idx, "retry_after": 1}))
+        return JSONResponse(
+            {"error": {"type": "rate_limit_error", "message": "agent-rr chaos: rate-limit-429"}},
+            429,
+            headers={"retry-after": "1"},
+        )
 
     live = state.router.live_body(provider, body)
     content = raw if live == body else json.dumps(live).encode()
@@ -151,6 +160,26 @@ async def _handle(
         await finish(resp.status_code, b"".join(chunks), streamed=True)
 
     return StreamingResponse(relay(), resp.status_code, headers=out_headers)
+
+
+async def _record_rate_limit(state: ProxyState, event: ChaosEvent) -> None:
+    try:
+        sha = await asyncio.to_thread(capture_tree_sha, state.snapshot_root)
+        now = time.time()
+        await asyncio.to_thread(
+            state.writer.append_step,
+            StepData(
+                ts_start=now,
+                ts_end=now,
+                kind="chaos_fault",
+                status="injected_fault",
+                pre_tree_sha=sha,
+                post_tree_sha=sha,
+                chaos=event,
+            ),
+        )
+    except Exception as exc:
+        print(f"agent-rr: warning: failed to record chaos fault: {exc}", file=sys.stderr)
 
 
 def _serve_mock(idx: int, body: dict[str, Any], mock: LlmCall) -> Response:

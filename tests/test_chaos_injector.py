@@ -6,6 +6,9 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import run_cli
+from upstream import Upstream
+
 from agent_rr.chaos.injector import (
     TRUNCATION_MARKER,
     ChaosInjector,
@@ -13,9 +16,6 @@ from agent_rr.chaos.injector import (
     load_chaos,
     truncate_stdout,
 )
-from conftest import run_cli
-from upstream import Upstream
-
 from agent_rr.errors import AgentRRError
 from agent_rr.models import ChaosConfig, ChaosRule
 from agent_rr.proxy.decorator import record
