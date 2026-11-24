@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Annotated, Any, TypeVar, cast
 
 import typer
+from rich.console import Console
 
 from agent_rr import __version__
 from agent_rr.bisect.engine import DEFAULT_HARNESS_PATHS, bisect, describe, majority_threshold
 from agent_rr.chaos.injector import load_chaos
 from agent_rr.errors import AgentRRError
+from agent_rr.evals.diff_viewer import render_diff, render_step, render_timeline
 from agent_rr.evals.freezer import freeze
 from agent_rr.fork import fork
 from agent_rr.git_engine.snapshot import head_sha, repo_toplevel
@@ -23,7 +25,7 @@ from agent_rr.git_engine.worktree import signal_cleanup
 from agent_rr.models import TapeMeta
 from agent_rr.proxy.replay_router import ReplayRouter
 from agent_rr.runner import run_recorded
-from agent_rr.tape.store import TapeWriter
+from agent_rr.tape.store import TapeWriter, read_steps
 
 app = typer.Typer(
     pretty_exceptions_enable=False,
@@ -174,3 +176,32 @@ def bisect_cmd(
         f"evaluations: {evaluations} (trials per evaluation: {trials}, "
         f"majority: {majority_threshold(trials)}/{trials})"
     )
+
+
+def _console() -> Console:
+    return Console(markup=False, highlight=False, soft_wrap=False)
+
+
+@app.command()
+@_guard
+def inspect(
+    tape: Annotated[Path, typer.Argument(help="Tape to inspect.")],
+    step: Annotated[int | None, typer.Option("--step", help="Show full detail for step N.")] = None,
+) -> None:
+    """Render a Rich timeline of the tape, or full detail for one step."""
+    meta, steps = read_steps(tape)
+    if step is None:
+        render_timeline(_console(), meta, steps)
+    else:
+        render_step(_console(), steps, step)
+
+
+@app.command()
+@_guard
+def diff(
+    tape_a: Annotated[Path, typer.Argument(help="Tape A.")],
+    tape_b: Annotated[Path, typer.Argument(help="Tape B.")],
+) -> None:
+    """Show divergence step, tool-sequence delta, token delta and final-tree diff."""
+    identical = render_diff(_console(), read_steps(tape_a), read_steps(tape_b))
+    raise typer.Exit(0 if identical else 1)
