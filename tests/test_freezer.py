@@ -170,3 +170,40 @@ def test_freeze_missing_tape_is_exit_2(tmp_path: Path) -> None:
     assert proc.returncode == 2
     assert proc.stderr.startswith("error: tape not found")
     assert not (tmp_path / "t.py").exists()
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("tape_id", 'x"""\nimport os\nos.system("touch PWNED")\n"""'),
+        ("base_commit_sha", "--output=/tmp/evil"),
+    ],
+)
+def test_freeze_rejects_tampered_tape_metadata(
+    fixture_tape: Path, tmp_path: Path, column: str, value: str
+) -> None:
+    """A shared .tape must not be able to inject code into the generated pytest module."""
+    import sqlite3
+
+    con = sqlite3.connect(fixture_tape)
+    con.execute(f"UPDATE tape_meta SET {column} = ?", (value,))
+    con.commit()
+    con.close()
+    out = tmp_path / "evals" / "test_evil.py"
+    proc = run_cli("freeze", str(fixture_tape), "--out", str(out), cwd=tmp_path)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "error:" in proc.stderr and "Traceback" not in proc.stderr
+    assert not out.exists()
+
+
+def test_fork_rejects_tampered_tree_sha(fixture_tape: Path, tmp_path: Path) -> None:
+    """Tree SHAs from a tape reach git argv; non-hex values must be refused before git runs."""
+    import sqlite3
+
+    con = sqlite3.connect(fixture_tape)
+    con.execute("UPDATE steps SET pre_tree_sha = '--output=/tmp/evil'")
+    con.commit()
+    con.close()
+    proc = run_cli("inspect", str(fixture_tape), cwd=tmp_path)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "Traceback" not in proc.stderr

@@ -106,7 +106,7 @@ def test_fork_mode_replays_tool_calls_before_fork_step(
                 command_argv=["agent"],
                 repo_root=str(repo),
                 base_commit_sha=head_sha(repo),
-                parent_tape_id="p" * 32,
+                parent_tape_id="f" * 32,
                 fork_step_idx=1,
             )
         )

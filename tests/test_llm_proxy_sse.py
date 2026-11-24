@@ -248,3 +248,18 @@ def test_proxy_env_injection() -> None:
         "ANTHROPIC_BASE_URL": "http://127.0.0.1:4321/anthropic",
         "AGENT_RR_TAPE_PATH": "/x/s.tape",
     }
+
+
+@pytest.mark.parametrize("headers", [{"host": "evil.example"}, {"origin": "https://evil.example"}])
+def test_dns_rebinding_and_cross_origin_requests_are_refused(
+    repo: Path, tmp_path: Path, upstream: Upstream, headers: dict[str, str]
+) -> None:
+    """A web page must not reach the proxy (and recorded/replayed responses) via DNS rebinding."""
+    tape = tmp_path / "s.tape"
+    with running_proxy(repo, tape, upstream) as base:
+        resp = httpx.post(
+            f"{base}/openai/v1/chat/completions", json={"model": "m"}, headers=headers, timeout=30
+        )
+    assert resp.status_code == 403
+    assert upstream.requests == []
+    assert _steps(tape) == []

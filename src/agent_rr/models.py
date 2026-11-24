@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 StepKind = Literal["llm_call", "tool_call", "chaos_fault"]
 StepStatus = Literal["ok", "error", "steered", "injected_fault"]
@@ -14,18 +14,23 @@ Preset = Literal[
 Target = Literal["llm", "tool"]
 
 
+# Values from a .tape reach git argv and generated Python source: accept only what git/uuid emit.
+GitSha = Annotated[str, StringConstraints(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")]
+TapeId = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]
+
+
 class Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class TapeMeta(Frozen):
-    tape_id: str
+    tape_id: TapeId
     schema_version: str = "0.1"
     created_at: float
     command_argv: list[str]
     repo_root: str
-    base_commit_sha: str
-    parent_tape_id: str | None = None
+    base_commit_sha: GitSha
+    parent_tape_id: TapeId | None = None
     fork_step_idx: int | None = None
     chaos_seed: int | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -65,8 +70,8 @@ class StepData(Frozen):
     ts_start: float
     ts_end: float
     kind: StepKind
-    pre_tree_sha: str
-    post_tree_sha: str
+    pre_tree_sha: GitSha
+    post_tree_sha: GitSha
     diff_text: str = ""
     status: StepStatus = "ok"
     llm: LlmCall | None = None

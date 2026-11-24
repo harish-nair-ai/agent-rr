@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import uvicorn
@@ -86,9 +87,21 @@ def build_app(state: ProxyState) -> Starlette:
     )
 
 
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _is_local_request(request: Request) -> bool:
+    """Refuse DNS-rebinding / cross-site requests: only local Host and (if sent) local Origin."""
+    host = urlsplit("//" + request.headers.get("host", "")).hostname
+    origin = request.headers.get("origin")
+    return host in LOCAL_HOSTS and (origin is None or urlsplit(origin).hostname in LOCAL_HOSTS)
+
+
 async def _handle(
     state: ProxyState, request: Request, provider: str, upstream: str, endpoint_prefix: str
 ) -> Response:
+    if not _is_local_request(request):
+        return Response("forbidden: non-local Host or Origin", status_code=403)
     raw = await request.body()
     try:
         body = _JSON_OBJECT.validate_json(raw or b"{}")

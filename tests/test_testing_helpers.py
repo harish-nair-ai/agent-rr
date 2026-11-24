@@ -22,7 +22,7 @@ def _tape(tmp_path: Path, steps: list[StepData]) -> Path:
     with TapeWriter(path) as w:
         w.ensure_meta(
             TapeMeta(
-                tape_id="t" * 32,
+                tape_id="e" * 32,
                 created_at=0,
                 command_argv=[],
                 repo_root="/r",
